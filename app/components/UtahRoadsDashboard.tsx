@@ -1,5 +1,5 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -214,14 +214,14 @@ async function refreshNow() {
     return map;
   }, [roadConds, cameras, stations]);
 
-  const npsByPark = useMemo(() => {
+const npsByPark = useMemo(() => {
   const map: Record<string, any[]> = {};
   for (const p of PARKS) map[p.code] = [];
 
   for (const a of npsAlerts) {
     const joined = (a as any)?.parkCodes ?? (a as any)?.parkCode ?? "";
     const codes = Array.isArray(joined) ? joined : String(joined).split(",");
-    for (let c of codes) {
+    for (const c of codes) {
       const key = String(c).trim().toLowerCase();
       if (key && map[key]) map[key].push(a);
     }
