@@ -125,7 +125,7 @@ async function getJSON(url: string) {
 
 // ---- Main Component ----------------------------------------------------------
 export default function UtahRoadsDashboard() {
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roadConds, setRoadConds] = useState<any[]>([]);
   const [cameras, setCameras] = useState<any[]>([]);
