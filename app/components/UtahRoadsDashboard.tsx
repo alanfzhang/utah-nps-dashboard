@@ -159,12 +159,22 @@ async function refreshNow() {
 
 
   const loadNPS = async () => {
-    const base = PROXY_URLS.nps;
-    const codes = PARKS.map(p => p.code).join(",");
-    const data = await getJSON(`${base}/alerts?parkCode=${codes}&limit=100`);
-    const items = data?.data || data?.alerts || [];
-    setNpsAlerts(items);
-  };
+  const base = PROXY_URLS.nps;
+  const codes = PARKS.map(p => p.code).join(",");
+  const url = `${base}/alerts?parkCode=${codes}&limit=100&start=0`;
+
+  const data = await getJSON<unknown>(url);
+  // Robustly extract the array regardless of shape
+  const itemsRaw =
+    (data as any)?.data && Array.isArray((data as any).data)
+      ? (data as any).data
+      : Array.isArray((data as any)?.alerts)
+      ? (data as any).alerts
+      : [];
+  const items = itemsRaw.filter(Boolean);
+  setNpsAlerts(items);
+};
+
 
   useEffect(() => {
     let mounted = true;
@@ -205,14 +215,20 @@ async function refreshNow() {
   }, [roadConds, cameras, stations]);
 
   const npsByPark = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    for (const p of PARKS) map[p.code] = [];
-    for (const a of npsAlerts) {
-      const codes = (a?.parkCode || a?.parkCodes || "").toString().split(",");
-      for (const c of codes) if (map[c]) map[c].push(a);
+  const map: Record<string, any[]> = {};
+  for (const p of PARKS) map[p.code] = [];
+
+  for (const a of npsAlerts) {
+    const joined = (a as any)?.parkCodes ?? (a as any)?.parkCode ?? "";
+    const codes = Array.isArray(joined) ? joined : String(joined).split(",");
+    for (let c of codes) {
+      const key = String(c).trim().toLowerCase();
+      if (key && map[key]) map[key].push(a);
     }
-    return map;
-  }, [npsAlerts]);
+  }
+  return map;
+}, [npsAlerts]);
+
 
   return (
   <div className="space-y-6" data-component="DashboardRoot">
@@ -263,7 +279,7 @@ async function refreshNow() {
     <section>
       <h2 className={sectionTitle}>NPS — Park Alerts</h2>
       <p className="text-sm text-neutral-400 mb-3">
-        Current alerts from Arches, Canyonlands, Capitol Reef, Zion (Bryce optional)
+        Current alerts from Arches, Canyonlands, Capitol Reef, Zion (Bryce)
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {PARKS.map((p) => (
