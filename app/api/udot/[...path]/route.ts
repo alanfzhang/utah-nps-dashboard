@@ -1,16 +1,17 @@
-// app/api/udot/[...path]/route.ts
 import type { NextRequest } from "next/server";
 
 export const revalidate = 0;
 export const dynamic = "force-dynamic";
 
+// IMPORTANT: Promise-based params to satisfy Next's validator.
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ path: string[] }> } // Next 14/15 typing
+  context: { params: Promise<{ path: string[] }> }
 ) {
-  const { path } = await context.params; // await per new typing
+  const { path } = await context.params; // <-- await the promise
+
   const base = (process.env.UDOT_API_BASE || "").replace(/\/$/, "");
-  const key = process.env.UDOT_API_KEY || "";
+  const key  = process.env.UDOT_API_KEY || "";
 
   if (!base || !key) {
     return Response.json(
@@ -20,13 +21,12 @@ export async function GET(
   }
 
   const incoming = new URL(req.url);
-  const search = incoming.search; // includes the leading "?"
-  const upstream = `${base}/${(path || []).join("/")}${search}`;
+  const upstream = `${base}/${(path || []).join("/")}${incoming.search}`;
 
   const r = await fetch(upstream, {
     headers: {
       Accept: "application/json",
-      "x-api-key": key, // change header/query shape if UDOT docs require
+      "x-api-key": key, // change to query param if UDOT requires
     },
     cache: "no-store",
   });

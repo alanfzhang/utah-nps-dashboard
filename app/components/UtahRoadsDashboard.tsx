@@ -145,17 +145,17 @@ async function refreshNow() {
 }
 
   const loadUDOT = async () => {
-    const base = PROXY_URLS.udot;
-    const [rc, ca, ws, al] = await Promise.all([
-      getJSON(`${base}/roadconditions`),
-      getJSON(`${base}/cameras`),
-      getJSON(`${base}/weatherstations`),
-    ]);
-    setRoadConds(rc || []);
-    setCameras(ca || []);
-    setStations(ws || []);
-    setAlerts(al || []);
-  };
+  const base = PROXY_URLS.udot;
+  const [rc, ca, ws] = await Promise.all([
+    getJSON(`${base}/roadconditions`),
+    getJSON(`${base}/cameras`),
+    getJSON(`${base}/weatherstations`),
+  ]);
+  setRoadConds(rc || []);
+  setCameras(ca || []);
+  setStations(ws || []);
+};
+
 
   const loadNPS = async () => {
     const base = PROXY_URLS.nps;
