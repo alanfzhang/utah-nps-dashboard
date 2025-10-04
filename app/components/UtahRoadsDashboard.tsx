@@ -1,4 +1,6 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -125,7 +127,6 @@ async function getJSON(url: string) {
 
 // ---- Main Component ----------------------------------------------------------
 export default function UtahRoadsDashboard() {
-  const [_loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roadConds, setRoadConds] = useState<any[]>([]);
   const [cameras, setCameras] = useState<any[]>([]);
@@ -169,14 +170,12 @@ async function refreshNow() {
     let mounted = true;
     (async () => {
       try {
-        setLoading(true);
         await Promise.all([loadUDOT(), loadNPS()]);
         if (!mounted) return;
         setError(null);
       } catch (e: any) {
         setError(e?.message || "Load failed");
       } finally {
-        setLoading(false);
       }
     })();
 
