@@ -1,11 +1,16 @@
+// app/api/udot/[...path]/route.ts
 import type { NextRequest } from "next/server";
 
 export const revalidate = 0;
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest, ctx: { params: { path?: string[] } }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> } // Next 14/15 typing
+) {
+  const { path } = await context.params; // await per new typing
   const base = (process.env.UDOT_API_BASE || "").replace(/\/$/, "");
-  const key  = process.env.UDOT_API_KEY || "";
+  const key = process.env.UDOT_API_KEY || "";
 
   if (!base || !key) {
     return Response.json(
@@ -14,21 +19,14 @@ export async function GET(req: NextRequest, ctx: { params: { path?: string[] } }
     );
   }
 
-  const path = (ctx.params.path || []).join("/");
   const incoming = new URL(req.url);
-  const search = incoming.search ? incoming.search : "";
-
-  const upstream = `${base}/${path}${search}`;
-
-  // If your API needs the key as a query parameter instead of a header, replace headers with:
-  //   const u = new URL(upstream);
-  //   u.searchParams.set("api_key", key);  // or "key" per docs
-  //   const finalUrl = u.toString();
+  const search = incoming.search; // includes the leading "?"
+  const upstream = `${base}/${(path || []).join("/")}${search}`;
 
   const r = await fetch(upstream, {
     headers: {
       Accept: "application/json",
-      "x-api-key": key, // TODO: change header name if UDOT expects a different one
+      "x-api-key": key, // change header/query shape if UDOT docs require
     },
     cache: "no-store",
   });
