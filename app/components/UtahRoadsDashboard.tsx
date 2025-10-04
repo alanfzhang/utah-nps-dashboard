@@ -128,7 +128,6 @@ export default function UtahRoadsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roadConds, setRoadConds] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
   const [cameras, setCameras] = useState<any[]>([]);
   const [stations, setStations] = useState<any[]>([]);
   const [npsAlerts, setNpsAlerts] = useState<any[]>([]);
@@ -151,7 +150,6 @@ async function refreshNow() {
       getJSON(`${base}/roadconditions`),
       getJSON(`${base}/cameras`),
       getJSON(`${base}/weatherstations`),
-      getJSON(`${base}/alerts`),
     ]);
     setRoadConds(rc || []);
     setCameras(ca || []);
