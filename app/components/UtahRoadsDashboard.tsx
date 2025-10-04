@@ -280,7 +280,7 @@ async function refreshNow() {
     </footer>
   </div>
 );
-
+}
 
 // ---- Child Components --------------------------------------------------------
 
