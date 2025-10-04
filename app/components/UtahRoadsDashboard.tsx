@@ -101,6 +101,55 @@ const REFRESH = {
   nps: 10 * 60 * 1000, // every 10 min (NPS alerts refresh ~2h on their side)
 };
 
+type NpsAlert = {
+  id?: string;
+  parkCode?: string;
+  parkCodes?: string[] | string;
+  title?: string;
+  category?: string;
+  description?: string;
+  severity?: string;
+  url?: string;
+  lastIndexedDate?: string; // ISO
+};
+
+type NpsResponse = {
+  data?: NpsAlert[];
+  alerts?: NpsAlert[];
+  total?: string | number;
+  limit?: string | number;
+  start?: string | number;
+};
+
+type RoadCondition = {
+  Id?: string | number;
+  RoadwayName?: string;
+  RoadCondition?: string;
+  WeatherCondition?: string;
+  Restriction?: string;
+  BeginMile?: number;
+  LastUpdated?: number; // epoch seconds
+};
+
+type CameraView = { Url?: string };
+type Camera = {
+  Id?: string | number;
+  Location?: string;
+  Roadway?: string;
+  Views?: CameraView[];
+};
+
+type WeatherStation = {
+  Id?: string | number;
+  StationName?: string;
+  SurfaceStatus?: string;
+  AirTemperature?: number;
+  SurfaceTemp?: number;
+  LastUpdated?: number; // epoch seconds
+};
+
+
+
 // ---- Helpers ----------------------------------------------------------------
 function relativeTime(utcSeconds?: number) {
   if (!utcSeconds) return "—";
@@ -119,18 +168,18 @@ function matchesRoute(name: string, route: { match: string[] }) {
   return route.match.some(m => n.includes(m.toUpperCase()));
 }
 
-async function getJSON(url: string) {
+async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-  return r.json();
+  return r.json() as Promise<T>;
 }
 
 // ---- Main Component ----------------------------------------------------------
 export default function UtahRoadsDashboard() {
   const [error, setError] = useState<string | null>(null);
-  const [roadConds, setRoadConds] = useState<any[]>([]);
-  const [cameras, setCameras] = useState<any[]>([]);
-  const [stations, setStations] = useState<any[]>([]);
+  const [roadConds, setRoadConds] = useState<RoadCondition[]>([]);
+  const [cameras,   setCameras]   = useState<Camera[]>([]);
+  const [stations,  setStations]  = useState<WeatherStation[]>([]);
   const [npsAlerts, setNpsAlerts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
@@ -145,12 +194,12 @@ async function refreshNow() {
   }
 }
 
-  const loadUDOT = async () => {
+const loadUDOT = async () => {
   const base = PROXY_URLS.udot;
   const [rc, ca, ws] = await Promise.all([
-    getJSON(`${base}/roadconditions`),
-    getJSON(`${base}/cameras`),
-    getJSON(`${base}/weatherstations`),
+    getJSON<RoadCondition[]>(`${base}/roadconditions`),
+    getJSON<Camera[]>(`${base}/cameras`),
+    getJSON<WeatherStation[]>(`${base}/weatherstations`),
   ]);
   setRoadConds(rc || []);
   setCameras(ca || []);
@@ -158,20 +207,20 @@ async function refreshNow() {
 };
 
 
-  const loadNPS = async () => {
+const loadNPS = async () => {
   const base = PROXY_URLS.nps;
   const codes = PARKS.map(p => p.code).join(",");
   const url = `${base}/alerts?parkCode=${codes}&limit=100&start=0`;
 
-  const data = await getJSON<unknown>(url);
-  // Robustly extract the array regardless of shape
-  const itemsRaw =
-    (data as any)?.data && Array.isArray((data as any).data)
-      ? (data as any).data
-      : Array.isArray((data as any)?.alerts)
-      ? (data as any).alerts
-      : [];
-  const items = itemsRaw.filter(Boolean);
+  const data = await getJSON<NpsResponse>(url);
+
+  // Prefer the v1 shape { data: [...] }, but accept { alerts: [...] } too
+  const items: NpsAlert[] = Array.isArray(data.data)
+    ? data.data
+    : Array.isArray(data.alerts)
+    ? data.alerts
+    : [];
+
   setNpsAlerts(items);
 };
 
@@ -214,20 +263,20 @@ async function refreshNow() {
     return map;
   }, [roadConds, cameras, stations]);
 
-const npsByPark = useMemo(() => {
-  const map: Record<string, any[]> = {};
-  for (const p of PARKS) map[p.code] = [];
+    const npsByPark = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    for (const p of PARKS) map[p.code] = [];
 
-  for (const a of npsAlerts) {
-    const joined = (a as any)?.parkCodes ?? (a as any)?.parkCode ?? "";
-    const codes = Array.isArray(joined) ? joined : String(joined).split(",");
-    for (const c of codes) {
-      const key = String(c).trim().toLowerCase();
-      if (key && map[key]) map[key].push(a);
+    for (const a of npsAlerts) {
+        const joined = (a as any)?.parkCodes ?? (a as any)?.parkCode ?? "";
+        const codes = Array.isArray(joined) ? joined : String(joined).split(",");
+        for (const c of codes) { // <-- const, not let
+        const key = String(c).trim().toLowerCase();
+        if (key && map[key]) map[key].push(a);
+        }
     }
-  }
-  return map;
-}, [npsAlerts]);
+    return map;
+    }, [npsAlerts]);
 
 
   return (
