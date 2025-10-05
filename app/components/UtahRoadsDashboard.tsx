@@ -284,7 +284,7 @@ export default function UtahRoadsDashboard() {
 async function refreshNow() {
   try {
     setRefreshing(true);
-    await Promise.all([loadUDOT(), loadNPS()]);
+    await Promise.allSettled([ loadUDOT(), loadNPS(), loadWeather() ]);
     setLastRefresh(Date.now());
   } finally {
     setRefreshing(false);
@@ -397,30 +397,30 @@ const loadNPS = async () => {
 };
 
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        await Promise.all([loadUDOT(), loadNPS()]);
-        await loadWeather();
-        if (!mounted) return;
-        setError(null);
-      } catch (e: any) {
-        setError(e?.message || "Load failed");
-      } finally {
-      }
-    })();
+useEffect(() => {
+  let mounted = true;
 
-    const t1 = setInterval(loadUDOT, REFRESH.udot);
-    const t2 = setInterval(loadNPS, REFRESH.nps);
-    const t3 = setInterval(loadWeather, 15 * 60 * 1000);
-    return () => {
-      mounted = false;
-      clearInterval(t1);
-      clearInterval(t2);
-      clearInterval(t3);
-    };
-  }, []);
+  (async () => {
+    // kick off all three; none blocks the others
+    const results = await Promise.allSettled([ loadUDOT(), loadNPS(), loadWeather() ]);
+    if (!mounted) return;
+
+    // surface the first error (so your Notice still shows a helpful message)
+    const firstFail = results.find(r => r.status === "rejected") as PromiseRejectedResult | undefined;
+    setError(firstFail ? (firstFail.reason?.message || "Load failed") : null);
+  })();
+
+  const t1 = setInterval(loadUDOT, REFRESH.udot);
+  const t2 = setInterval(loadNPS,  REFRESH.nps);
+  const t3 = setInterval(loadWeather, 15 * 60 * 1000);
+
+  return () => {
+    mounted = false;
+    clearInterval(t1);
+    clearInterval(t2);
+    clearInterval(t3);
+  };
+}, []);
 
   const byRoute = useMemo(() => {
     const map: Record<string, any> = {};
