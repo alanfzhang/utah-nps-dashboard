@@ -395,7 +395,7 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 
   {/* NEW: tiny status line */}
   <div className="mt-1 text-xs text-neutral-500">
-    UDOT updated {fmtUpdated(udotUpdatedAt)} · NPS updated {fmtUpdated(npsUpdatedAt)}
+    UDOT last updated {fmtUpdated(udotUpdatedAt)} · NPS last updated {fmtUpdated(npsUpdatedAt)}
   </div>
 </div>
     
@@ -403,9 +403,6 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
     {/* UDOT — Highway Status */}
     <section>
       <h2 className={sectionTitle}>UDOT — Highway Status</h2>
-      <p className="text-sm text-neutral-400 mb-3">
-        Live highway conditions, cameras, and RWIS readings for I-15 · I-70 · US-191 · SR-313 · SR-24 · SR-12 · SR-63 · US-89 · SR-9
-      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {ROUTES.map((r) => (
           <CollapsibleRouteCard key={r.key} routeKey={r.key} data={byRoute[r.key]} />
@@ -416,12 +413,6 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
     {/* NPS — Park Alerts */}
     <section>
       <h2 className={sectionTitle}>NPS — Park Alerts</h2>
-      <p className="text-xs text-neutral-500 mb-2">
-  Loaded: {NpsAlert.length} alerts · {PARKS.map(p => `${p.code}:${(npsByPark[p.code]||[]).length}`).join("  ")}
-</p>
-      <p className="text-sm text-neutral-400 mb-3">
-        Current alerts from Arches, Canyonlands, Capitol Reef, Zion (Bryce)
-      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {PARKS.map((p) => (
           <CollapsibleParkAlerts key={p.code} park={p} alerts={npsByPark[p.code] || []} />
