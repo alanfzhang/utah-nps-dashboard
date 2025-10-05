@@ -155,6 +155,14 @@ type WeatherStation = {
 // add near your other types
 type AlertParks = { parks?: Array<{ parkCode?: string }> };
 
+// ---- Small helper to show clock + "x m ago"
+function fmtUpdated(ts: number | null): string {
+  if (!ts) return "—";
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  const t = new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${t} (${mins}m ago)`;
+}
+
 // replace your helper with this
 function codesFromAlert(a: NpsAlert): string[] {
   const out: string[] = [];
@@ -207,6 +215,9 @@ export default function UtahRoadsDashboard() {
   const [NpsAlert, setNpsAlert] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  const [udotUpdatedAt, setUdotUpdatedAt] = useState<number | null>(null);
+  const [npsUpdatedAt, setNpsUpdatedAt] = useState<number | null>(null);
+
 
 async function refreshNow() {
   try {
@@ -228,6 +239,7 @@ const loadUDOT = async () => {
   setRoadConds(rc || []);
   setCameras(ca || []);
   setStations(ws || []);
+  setUdotUpdatedAt(Date.now());
 };
 
 const loadNPS = async () => {
@@ -247,6 +259,7 @@ const loadNPS = async () => {
 
     if (bulkItems.length > 0) {
       setNpsAlert(bulkItems.filter(Boolean));
+      setNpsUpdatedAt(Date.now());
       return;
     }
   } catch (e) {
@@ -268,6 +281,7 @@ const loadNPS = async () => {
 
     if (merged.length > 0) {
       setNpsAlert(merged.filter(Boolean));
+      setNpsUpdatedAt(Date.now());
       return;
     }
   } catch (e) {
@@ -290,6 +304,7 @@ const loadNPS = async () => {
     });
 
     setNpsAlert(filtered);
+    setNpsUpdatedAt(Date.now());
   } catch (e) {
     console.error("NPS state fallback failed", e);
     setNpsAlert([]);
@@ -359,27 +374,31 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       </Notice>
     )}
 
-    {/* Toolbar */}
-    <div className="mb-4 flex items-center justify-between">
-      <div className="text-sm text-neutral-400">
-        UDOT auto-refresh 2m · NPS 10m
-        {lastRefresh && (
-          <span className="ml-2 text-neutral-500">
-            · Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-      <button
-        onClick={refreshNow}
-        disabled={refreshing}
-        className="inline-flex items-center gap-2 text-sm rounded-lg border border-neutral-700 bg-neutral-800 hover:bg-neutral-800/70 text-neutral-200 px-3 py-1.5 disabled:opacity-60"
-      >
-        {refreshing && (
-          <span className="h-3 w-3 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />
-        )}
-        Refresh
-      </button>
+{/* Toolbar */}
+<div className="mb-4">
+  <div className="flex items-center justify-between">
+    <div className="text-sm text-neutral-400">
+      UDOT auto-refresh 2m · NPS 10m
+      {lastRefresh && (
+        <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
+      )}
     </div>
+    <button
+      onClick={refreshNow}
+      disabled={refreshing}
+      className="inline-flex items-center gap-2 text-sm rounded-lg border border-neutral-700 bg-neutral-800 hover:bg-neutral-800/70 text-neutral-200 px-3 py-1.5 disabled:opacity-60"
+    >
+      {refreshing && <span className="h-3 w-3 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />}
+      Refresh
+    </button>
+  </div>
+
+  {/* NEW: tiny status line */}
+  <div className="mt-1 text-xs text-neutral-500">
+    UDOT updated {fmtUpdated(udotUpdatedAt)} · NPS updated {fmtUpdated(npsUpdatedAt)}
+  </div>
+</div>
+    
 
     {/* UDOT — Highway Status */}
     <section>
