@@ -151,6 +151,30 @@ type WeatherStation = {
 
 
 // ---- Helpers ----------------------------------------------------------------
+
+// add near your other types
+type AlertParks = { parks?: Array<{ parkCode?: string }> };
+
+// replace your helper with this
+function codesFromAlert(a: NpsAlert): string[] {
+  const out: string[] = [];
+  const push = (s?: string) => {
+    const v = (s ?? "").trim().toLowerCase();
+    if (v) out.push(v);
+  };
+
+  if (Array.isArray(a.parkCodes)) { for (const c of a.parkCodes) push(String(c)); return out; }
+  if (typeof a.parkCodes === "string") { for (const c of a.parkCodes.split(",")) push(c); return out; }
+  if (typeof a.parkCode === "string") { for (const c of a.parkCode.split(",")) push(c); return out; }
+
+  // Safely read optional nested parks even if base type doesn't declare it
+  const maybeParks = (a as AlertParks).parks;
+  if (Array.isArray(maybeParks)) {
+    for (const p of maybeParks) push(p?.parkCode);
+  }
+  return out;
+}
+
 function relativeTime(utcSeconds?: number) {
   if (!utcSeconds) return "—";
   const now = Date.now();
@@ -180,7 +204,7 @@ export default function UtahRoadsDashboard() {
   const [roadConds, setRoadConds] = useState<RoadCondition[]>([]);
   const [cameras,   setCameras]   = useState<Camera[]>([]);
   const [stations,  setStations]  = useState<WeatherStation[]>([]);
-  const [npsAlerts, setNpsAlerts] = useState<any[]>([]);
+  const [NpsAlert, setNpsAlert] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
 
@@ -206,22 +230,26 @@ const loadUDOT = async () => {
   setStations(ws || []);
 };
 
-
 const loadNPS = async () => {
   const base = PROXY_URLS.nps;
   const codes = PARKS.map(p => p.code).join(",");
   const url = `${base}/alerts?parkCode=${codes}&limit=100&start=0`;
 
-  const data = await getJSON<NpsResponse>(url);
+  try {
+    const data = await getJSON<NpsResponse>(url);
+    const items: NpsAlert[] = Array.isArray(data.data)
+      ? data.data
+      : Array.isArray(data.alerts)
+      ? data.alerts
+      : [];
 
-  // Prefer the v1 shape { data: [...] }, but accept { alerts: [...] } too
-  const items: NpsAlert[] = Array.isArray(data.data)
-    ? data.data
-    : Array.isArray(data.alerts)
-    ? data.alerts
-    : [];
-
-  setNpsAlerts(items);
+    setNpsAlert(Array.isArray(items) ? items.filter(Boolean) : []);
+  } catch (err) {
+    // If the proxy 200s with non-JSON, getJSON would have thrown; surface the error you already render
+    console.error("NPS load failed", err);
+    setNpsAlert([]); // keep UI stable
+    throw err;        // your outer try/catch shows a Notice
+  }
 };
 
 
@@ -263,21 +291,18 @@ const loadNPS = async () => {
     return map;
   }, [roadConds, cameras, stations]);
 
-    const npsByPark = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    for (const p of PARKS) map[p.code] = [];
+const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
+  const map: Record<string, NpsAlert[]> = {};
+  for (const p of PARKS) map[p.code] = [];
 
-    for (const a of npsAlerts) {
-        const joined = (a as any)?.parkCodes ?? (a as any)?.parkCode ?? "";
-        const codes = Array.isArray(joined) ? joined : String(joined).split(",");
-        for (const c of codes) { // <-- const, not let
-        const key = String(c).trim().toLowerCase();
-        if (key && map[key]) map[key].push(a);
-        }
+  for (const a of NpsAlert) {
+    const keys = codesFromAlert(a);
+    for (const c of keys) {
+      if (map[c]) map[c].push(a);
     }
-    return map;
-    }, [npsAlerts]);
-
+  }
+  return map;
+}, [NpsAlert]);
 
   return (
   <div className="space-y-6" data-component="DashboardRoot">
@@ -327,6 +352,9 @@ const loadNPS = async () => {
     {/* NPS — Park Alerts */}
     <section>
       <h2 className={sectionTitle}>NPS — Park Alerts</h2>
+      <p className="text-xs text-neutral-500 mb-2">
+  Loaded: {NpsAlert.length} alerts · {PARKS.map(p => `${p.code}:${(npsByPark[p.code]||[]).length}`).join("  ")}
+</p>
       <p className="text-sm text-neutral-400 mb-3">
         Current alerts from Arches, Canyonlands, Capitol Reef, Zion (Bryce)
       </p>
