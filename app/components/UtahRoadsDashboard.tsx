@@ -71,6 +71,7 @@ const PROXY_URLS = {
   // Expect serverless endpoints that forward to UDOT & NPS (examples below).
   udot: process.env.NEXT_PUBLIC_UDOT_PROXY?.replace(/\/$/, "") || "/api/udot",
   nps: process.env.NEXT_PUBLIC_NPS_PROXY?.replace(/\/$/, "") || "/api/nps",
+  weather: process.env.NEXT_PUBLIC_WEATHER_PROXY?.replace(/\/$/, "") || "/api/weather",
 };
 
 // Utah routes we care about (matches substrings in UDOT payloads)
@@ -152,6 +153,60 @@ type WeatherStation = {
 
 // ---- Helpers ----------------------------------------------------------------
 
+// ---- Weather types -----------------------------------------------------------
+type OMCurrent = { temperature?: number; weathercode?: number };
+type OMDaily = {
+  time: string[];
+  temperature_2m_max: number[];
+  temperature_2m_min: number[];
+  precipitation_probability_max: number[];
+};
+type OMResponse = {
+  latitude: number; longitude: number; timezone: string;
+  current_weather?: OMCurrent;
+  daily?: OMDaily;
+};
+
+// Locations (lat/long are fixed; no geocoding needed)
+const WEATHER_CITIES = [
+  { key: "las",  name: "Las Vegas, NV",  lat: 36.1699, lon: -115.1398 },
+  { key: "moab", name: "Moab, UT",       lat: 38.5733, lon: -109.5498 },
+  { key: "tor",  name: "Torrey, UT",     lat: 38.3008, lon: -111.4185 },
+  { key: "hur",  name: "Hurricane, UT",  lat: 37.1753, lon: -113.2893 },
+];
+
+// Map Open-Meteo weather codes → friendly text
+function wmText(code?: number): string {
+  switch (code ?? -1) {
+    case 0: return "Clear";
+    case 1: return "Mostly clear";
+    case 2: return "Partly cloudy";
+    case 3: return "Overcast";
+    case 45: case 48: return "Fog";
+    case 51: case 53: case 55: return "Drizzle";
+    case 56: case 57: return "Freezing drizzle";
+    case 61: case 63: case 65: return "Rain";
+    case 66: case 67: return "Freezing rain";
+    case 71: case 73: case 75: return "Snow";
+    case 77: return "Snow grains";
+    case 80: case 81: case 82: return "Showers";
+    case 85: case 86: return "Snow showers";
+    case 95: return "Thunderstorms";
+    case 96: case 99: return "Thunderstorms (hail)";
+    default: return "—";
+  }
+}
+
+function dayLabel(isoDate: string, index: number): string {
+  if (index === 0) return "Today";
+  if (index === 1) return "Tomorrow";
+  try {
+    return new Date(isoDate + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" });
+  } catch {
+    return `+${index}d`;
+  }
+}
+
 // add near your other types
 type AlertParks = { parks?: Array<{ parkCode?: string }> };
 
@@ -217,6 +272,8 @@ export default function UtahRoadsDashboard() {
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
   const [udotUpdatedAt, setUdotUpdatedAt] = useState<number | null>(null);
   const [npsUpdatedAt, setNpsUpdatedAt] = useState<number | null>(null);
+  const [weatherByCity, setWeatherByCity] = useState<Record<string, OMResponse | null>>({});
+  const [weatherUpdatedAt, setWeatherUpdatedAt] = useState<number | null>(null);
 
 
 async function refreshNow() {
@@ -228,6 +285,27 @@ async function refreshNow() {
     setRefreshing(false);
   }
 }
+
+const loadWeather = async () => {
+  // Fetch all four cities in parallel
+  const urls = WEATHER_CITIES.map(c =>
+    `${PROXY_URLS.weather}/v1/forecast` +
+    `?latitude=${c.lat}&longitude=${c.lon}` +
+    `&current_weather=true` +
+    `&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch` +
+    `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&forecast_days=3&timezone=auto`
+  );
+
+  const results = await Promise.all(
+    urls.map(u => getJSON<OMResponse>(u).catch(() => null))
+  );
+
+  const next: Record<string, OMResponse | null> = {};
+  WEATHER_CITIES.forEach((c, i) => { next[c.key] = results[i]; });
+  setWeatherByCity(next);
+  setWeatherUpdatedAt(Date.now());
+};
 
 const loadUDOT = async () => {
   const base = PROXY_URLS.udot;
@@ -318,6 +396,7 @@ const loadNPS = async () => {
     (async () => {
       try {
         await Promise.all([loadUDOT(), loadNPS()]);
+        await loadWeather();
         if (!mounted) return;
         setError(null);
       } catch (e: any) {
@@ -328,10 +407,12 @@ const loadNPS = async () => {
 
     const t1 = setInterval(loadUDOT, REFRESH.udot);
     const t2 = setInterval(loadNPS, REFRESH.nps);
+    const t3 = setInterval(loadWeather, 15 * 60 * 1000);
     return () => {
       mounted = false;
       clearInterval(t1);
       clearInterval(t2);
+      clearInterval(t3);
     };
   }, []);
 
@@ -377,8 +458,8 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 {/* Toolbar */}
 <div className="mb-4">
   <div className="flex items-center justify-between">
-    <div className="text-sm text-neutral-400">
-      UDOT auto-refresh 2m · NPS 10m
+    <div className="text-sm text-neutral-300">
+      UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
       {lastRefresh && (
         <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
       )}
@@ -393,12 +474,31 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
     </button>
   </div>
 
-  {/* NEW: tiny status line */}
-  <div className="mt-1 text-xs text-neutral-500">
-    UDOT last updated {fmtUpdated(udotUpdatedAt)} · NPS last updated {fmtUpdated(npsUpdatedAt)}
+  {/* Tiny status line */}
+    <div className="text-sm text-neutral-300">
+    NPS last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 10m
   </div>
 </div>
     
+    {/* Weather — 3-Day Snapshot */}
+<section>
+  <h2 className={sectionTitle}>Weather — 3-Day Snapshot</h2>
+  <p className="text-sm text-neutral-400 mb-3">
+    Current conditions and 3-day highs/lows with precip chance for your route bases.
+  </p>
+  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+    {WEATHER_CITIES.map((c) => (
+      <WeatherCard
+        key={c.key}
+        name={c.name}
+        data={weatherByCity[c.key] || null}
+      />
+    ))}
+  </div>
+  <div className="mt-1 text-xs text-neutral-500">
+    Weather updated {fmtUpdated(weatherUpdatedAt)}
+  </div>
+</section>
 
     {/* UDOT — Highway Status */}
     <section>
@@ -428,6 +528,43 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 }
 
 // ---- Child Components --------------------------------------------------------
+
+function WeatherCard({ name, data }: { name: string; data: OMResponse | null }) {
+  const cur = data?.current_weather;
+  const daily = data?.daily;
+  const has3 = !!(daily && daily.time?.length >= 3);
+
+  return (
+    <div className={cardBase}>
+      <div className="flex items-start justify-between">
+        <div className="font-semibold text-neutral-100">{name}</div>
+        <div className="text-right">
+          <div className="text-3xl leading-none text-neutral-100">
+            {cur?.temperature != null ? Math.round(cur.temperature) + "°F" : "—"}
+          </div>
+          <div className="text-xs text-neutral-400">{wmText(cur?.weathercode)}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        {[0,1,2].map((i) => (
+          <div key={i} className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-2">
+            <div className="text-[11px] text-neutral-400">{has3 ? dayLabel(daily!.time[i], i) : "—"}</div>
+            <div className="mt-1 text-sm text-neutral-100">
+              {has3 ? Math.round(daily!.temperature_2m_max[i]) : "—"}° /{" "}
+              {has3 ? Math.round(daily!.temperature_2m_min[i]) : "—"}°
+            </div>
+            <div className="text-[11px] text-neutral-500">
+              {has3 && daily!.precipitation_probability_max[i] != null
+                ? `Precip ${Math.round(daily!.precipitation_probability_max[i])}%`
+                : "Precip —"}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function CollapsibleRouteCard({ routeKey, data }: { routeKey: string; data: any }) {
   const r = data?.route as { label?: string } | undefined;
