@@ -154,16 +154,19 @@ type WeatherStation = {
 // ---- Helpers ----------------------------------------------------------------
 
 // ---- Weather types -----------------------------------------------------------
-type OMCurrent = { temperature?: number; weathercode?: number };
+type OMCurrentV1 = { temperature?: number; weathercode?: number };
+type OMCurrentV2 = { temperature_2m?: number; weather_code?: number };
 type OMDaily = {
   time: string[];
-  temperature_2m_max: number[];
-  temperature_2m_min: number[];
-  precipitation_probability_max: number[];
+  temperature_2m_max?: number[];
+  temperature_2m_min?: number[];
+  precipitation_probability_max?: number[];   // may be missing
+  precipitation_sum?: number[];               // fallback if probability missing
 };
 type OMResponse = {
-  latitude: number; longitude: number; timezone: string;
-  current_weather?: OMCurrent;
+  latitude: number; longitude: number; timezone?: string;
+  current_weather?: OMCurrentV1;   // v1
+  current?: OMCurrentV2;           // v2
   daily?: OMDaily;
 };
 
@@ -288,14 +291,15 @@ async function refreshNow() {
 
 const loadWeather = async () => {
   // Fetch all four cities in parallel
-  const urls = WEATHER_CITIES.map(c =>
-    `${PROXY_URLS.weather}/v1/forecast` +
-    `?latitude=${c.lat}&longitude=${c.lon}` +
-    `&current_weather=true` +
-    `&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch` +
-    `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
-    `&forecast_days=3&timezone=auto`
-  );
+const urls = WEATHER_CITIES.map(c =>
+  `${PROXY_URLS.weather}/v1/forecast` +
+  `?latitude=${c.lat}&longitude=${c.lon}` +
+  `&current_weather=true` +                               // v1
+  `&current=temperature_2m,weather_code` +               // v2
+  `&temperature_unit=fahrenheit&windspeed_unit=mph` +
+  `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+  `&forecast_days=3&timezone=auto`
+);
 
   const results = await Promise.all(
     urls.map(u => getJSON<OMResponse>(u).catch(() => null))
@@ -459,6 +463,9 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 <div className="mb-4">
   <div className="flex items-center justify-between">
     <div className="text-sm text-neutral-300">
+    Weather last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 15m
+    </div>
+    <div className="text-sm text-neutral-300">
       UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
       {lastRefresh && (
         <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
@@ -480,9 +487,9 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
   </div>
 </div>
     
-    {/* Weather — 3-Day Snapshot */}
+    {/* Weather - 3-Day Snapshot */}
 <section>
-  <h2 className={sectionTitle}>Weather — 3-Day Snapshot</h2>
+  <h2 className={sectionTitle}>Weather 3-Day Snapshot</h2>
   <p className="text-sm text-neutral-400 mb-3">
     Current conditions and 3-day highs/lows with precip chance for your route bases.
   </p>
@@ -495,14 +502,11 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       />
     ))}
   </div>
-  <div className="mt-1 text-xs text-neutral-500">
-    Weather updated {fmtUpdated(weatherUpdatedAt)}
-  </div>
 </section>
 
-    {/* UDOT — Highway Status */}
+    {/* UDOT Highway Status */}
     <section>
-      <h2 className={sectionTitle}>UDOT — Highway Status</h2>
+      <h2 className={sectionTitle}>UDOT Highway Status</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {ROUTES.map((r) => (
           <CollapsibleRouteCard key={r.key} routeKey={r.key} data={byRoute[r.key]} />
@@ -510,9 +514,9 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       </div>
     </section>
 
-    {/* NPS — Park Alerts */}
+    {/* NPS Park Alerts */}
     <section>
-      <h2 className={sectionTitle}>NPS — Park Alerts</h2>
+      <h2 className={sectionTitle}>NPS Park Alerts</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {PARKS.map((p) => (
           <CollapsibleParkAlerts key={p.code} park={p} alerts={npsByPark[p.code] || []} />
@@ -530,9 +534,21 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 // ---- Child Components --------------------------------------------------------
 
 function WeatherCard({ name, data }: { name: string; data: OMResponse | null }) {
-  const cur = data?.current_weather;
+  const curV1 = data?.current_weather;
+  const curV2 = data?.current;
+
+  const curTemp =
+    curV1?.temperature ?? curV2?.temperature_2m ?? null;
+  const curCode =
+    curV1?.weathercode ?? curV2?.weather_code ?? undefined;
+
   const daily = data?.daily;
-  const has3 = !!(daily && daily.time?.length >= 3);
+  const has3 =
+    !!daily &&
+    Array.isArray(daily.time) &&
+    daily.time.length >= 3 &&
+    Array.isArray(daily.temperature_2m_max) &&
+    Array.isArray(daily.temperature_2m_min);
 
   return (
     <div className={cardBase}>
@@ -540,27 +556,37 @@ function WeatherCard({ name, data }: { name: string; data: OMResponse | null }) 
         <div className="font-semibold text-neutral-100">{name}</div>
         <div className="text-right">
           <div className="text-3xl leading-none text-neutral-100">
-            {cur?.temperature != null ? Math.round(cur.temperature) + "°F" : "—"}
+            {curTemp != null ? Math.round(curTemp) + "°F" : "—"}
           </div>
-          <div className="text-xs text-neutral-400">{wmText(cur?.weathercode)}</div>
+          <div className="text-xs text-neutral-400">{wmText(curCode)}</div>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
-        {[0,1,2].map((i) => (
-          <div key={i} className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-2">
-            <div className="text-[11px] text-neutral-400">{has3 ? dayLabel(daily!.time[i], i) : "—"}</div>
-            <div className="mt-1 text-sm text-neutral-100">
-              {has3 ? Math.round(daily!.temperature_2m_max[i]) : "—"}° /{" "}
-              {has3 ? Math.round(daily!.temperature_2m_min[i]) : "—"}°
+        {[0, 1, 2].map((i) => {
+          const hi = has3 ? daily!.temperature_2m_max![i] : undefined;
+          const lo = has3 ? daily!.temperature_2m_min![i] : undefined;
+
+          // Precip: prefer probability; fall back to precip_sum (show “—” if absent)
+          const prob = has3 && Array.isArray(daily!.precipitation_probability_max)
+            ? daily!.precipitation_probability_max![i]
+            : undefined;
+
+          return (
+            <div key={i} className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-2">
+              <div className="text-[11px] text-neutral-400">
+                {has3 ? dayLabel(daily!.time[i], i) : "—"}
+              </div>
+              <div className="mt-1 text-sm text-neutral-100">
+                {hi != null ? Math.round(hi) : "—"}° /{" "}
+                {lo != null ? Math.round(lo) : "—"}°
+              </div>
+              <div className="text-[11px] text-neutral-500">
+                {prob != null ? `Precip ${Math.round(prob)}%` : "Precip —"}
+              </div>
             </div>
-            <div className="text-[11px] text-neutral-500">
-              {has3 && daily!.precipitation_probability_max[i] != null
-                ? `Precip ${Math.round(daily!.precipitation_probability_max[i])}%`
-                : "Precip —"}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
