@@ -171,11 +171,13 @@ type OMResponse = {
 };
 
 // Locations (lat/long are fixed; no geocoding needed)
-const WEATHER_CITIES = [
-  { key: "las",  name: "Las Vegas, NV",  lat: 36.1699, lon: -115.1398 },
-  { key: "moab", name: "Moab, UT",       lat: 38.5733, lon: -109.5498 },
-  { key: "tor",  name: "Torrey, UT",     lat: 38.3008, lon: -111.4185 },
-  { key: "hur",  name: "Hurricane, UT",  lat: 37.1753, lon: -113.2893 },
+type City = { key: string; name: string; lat: number; lon: number; tz: string };
+
+const WEATHER_CITIES: City[] = [
+  { key: "las",  name: "Las Vegas, NV",  lat: 36.1699, lon: -115.1398, tz: "America/Los_Angeles" },
+  { key: "moab", name: "Moab, UT",       lat: 38.5733, lon: -109.5498, tz: "America/Denver" },
+  { key: "tor",  name: "Torrey, UT",     lat: 38.3008, lon: -111.4185, tz: "America/Denver" },
+  { key: "hur",  name: "Hurricane, UT",  lat: 37.1753, lon: -113.2893, tz: "America/Denver" },
 ];
 
 // Map Open-Meteo weather codes → friendly text
@@ -294,11 +296,11 @@ const loadWeather = async () => {
 const urls = WEATHER_CITIES.map(c =>
   `${PROXY_URLS.weather}/v1/forecast` +
   `?latitude=${c.lat}&longitude=${c.lon}` +
-  `&current_weather=true` +                               // v1
-  `&current=temperature_2m,weather_code` +               // v2
+  `&current_weather=true` +
+  `&current=temperature_2m,weather_code` +
   `&temperature_unit=fahrenheit&windspeed_unit=mph` +
   `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
-  `&forecast_days=3&timezone=auto`
+  `&forecast_days=3&timezone=${encodeURIComponent(c.tz)}`
 );
 
   const results = await Promise.all(
@@ -465,12 +467,6 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
     <div className="text-sm text-neutral-300">
     Weather last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 15m
     </div>
-    <div className="text-sm text-neutral-300">
-      UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
-      {lastRefresh && (
-        <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
-      )}
-    </div>
     <button
       onClick={refreshNow}
       disabled={refreshing}
@@ -480,8 +476,12 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       Refresh
     </button>
   </div>
-
-  {/* Tiny status line */}
+        <div className="text-sm text-neutral-300">
+      UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
+      {lastRefresh && (
+        <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
+      )}
+    </div>
     <div className="text-sm text-neutral-300">
     NPS last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 10m
   </div>
