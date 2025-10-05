@@ -232,23 +232,68 @@ const loadUDOT = async () => {
 
 const loadNPS = async () => {
   const base = PROXY_URLS.nps;
-  const codes = PARKS.map(p => p.code).join(",");
-  const url = `${base}/alerts?parkCode=${codes}&limit=100&start=0`;
+
+  // 1) Try bulk fetch by comma-separated parkCode
+  const bulkCodes = PARKS.map(p => p.code).join(",");
+  const bulkUrl = `${base}/alerts?parkCode=${bulkCodes}&limit=100&start=0`;
 
   try {
-    const data = await getJSON<NpsResponse>(url);
-    const items: NpsAlert[] = Array.isArray(data.data)
-      ? data.data
-      : Array.isArray(data.alerts)
-      ? data.alerts
+    const bulk = await getJSON<NpsResponse>(bulkUrl);
+    const bulkItems: NpsAlert[] = Array.isArray(bulk.data)
+      ? bulk.data
+      : Array.isArray(bulk.alerts)
+      ? bulk.alerts
       : [];
 
-    setNpsAlert(Array.isArray(items) ? items.filter(Boolean) : []);
-  } catch (err) {
-    // If the proxy 200s with non-JSON, getJSON would have thrown; surface the error you already render
-    console.error("NPS load failed", err);
-    setNpsAlert([]); // keep UI stable
-    throw err;        // your outer try/catch shows a Notice
+    if (bulkItems.length > 0) {
+      setNpsAlert(bulkItems.filter(Boolean));
+      return;
+    }
+  } catch (e) {
+    // continue to fallbacks
+    console.warn("NPS bulk fetch failed; trying per-park fallback", e);
+  }
+
+  // 2) Fallback: fetch each park separately and merge
+  try {
+    const perPark = await Promise.all(
+      PARKS.map(p =>
+        getJSON<NpsResponse>(`${base}/alerts?parkCode=${p.code}&limit=100&start=0`).catch(() => ({ data: [], alerts: [] }))
+      )
+    );
+
+    const merged: NpsAlert[] = perPark.flatMap(r =>
+      Array.isArray(r.data) ? r.data : Array.isArray(r.alerts) ? r.alerts : []
+    );
+
+    if (merged.length > 0) {
+      setNpsAlert(merged.filter(Boolean));
+      return;
+    }
+  } catch (e) {
+    console.warn("NPS per-park fallback failed; trying state fallback", e);
+  }
+
+  // 3) Last resort: fetch by state and filter locally
+  try {
+    const stateResp = await getJSON<NpsResponse>(`${base}/alerts?stateCode=UT&limit=200&start=0`);
+    const allUT: NpsAlert[] = Array.isArray(stateResp.data)
+      ? stateResp.data
+      : Array.isArray(stateResp.alerts)
+      ? stateResp.alerts
+      : [];
+
+    const allowed = new Set(PARKS.map(p => p.code));
+    const filtered = allUT.filter(a => {
+      const codes = codesFromAlert(a);
+      return codes.some(c => allowed.has(c));
+    });
+
+    setNpsAlert(filtered);
+  } catch (e) {
+    console.error("NPS state fallback failed", e);
+    setNpsAlert([]);
+    throw e; // your Notice UI will surface
   }
 };
 
