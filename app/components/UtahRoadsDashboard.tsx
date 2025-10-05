@@ -464,9 +464,6 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 {/* Toolbar */}
 <div className="mb-4">
   <div className="flex items-center justify-between">
-    <div className="text-sm text-neutral-300">
-    Weather last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 15m
-    </div>
     <button
       onClick={refreshNow}
       disabled={refreshing}
@@ -476,7 +473,11 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       Refresh
     </button>
   </div>
-        <div className="text-sm text-neutral-300">
+      <div className="text-sm text-neutral-300">
+    Weather last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 15m
+    </div>
+
+     <div className="text-sm text-neutral-300">
       UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
       {lastRefresh && (
         <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
@@ -489,7 +490,7 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
     
     {/* Weather - 3-Day Snapshot */}
 <section>
-  <h2 className={sectionTitle}>Weather 3-Day Snapshot</h2>
+  <h2 className={sectionTitle}>Weather Snapshot</h2>
   <p className="text-sm text-neutral-400 mb-3">
     Current conditions and 3-day highs/lows with precip chance for your route bases.
   </p>
