@@ -472,6 +472,9 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
       {refreshing && <span className="h-3 w-3 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />}
       Refresh
     </button>
+          {lastRefresh && (
+        <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
+      )}
   </div>
       <div className="text-sm text-neutral-300">
     Weather last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 15m
@@ -479,9 +482,6 @@ const npsByPark = useMemo<Record<string, NpsAlert[]>>(() => {
 
      <div className="text-sm text-neutral-300">
       UDOT last updated {fmtUpdated(udotUpdatedAt)} · auto-refresh 2m
-      {lastRefresh && (
-        <span className="ml-2 text-neutral-500">· Last manual refresh {new Date(lastRefresh).toLocaleTimeString()}</span>
-      )}
     </div>
     <div className="text-sm text-neutral-300">
     NPS last updated {fmtUpdated(npsUpdatedAt)} · auto-refresh 10m
